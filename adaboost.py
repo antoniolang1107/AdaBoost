@@ -17,31 +17,31 @@ _.predict([[x,y]])
 def adaboost_train(X,Y,max_iter):
     """Returns list of trained decision tree and alpha values
     """
-
-    weights = np.ones(len(X))/len(X) # potentially unnecessary
-    samples = X
-    labels = Y
+    X = np.array(X)
+    Y = np.array(Y)
+    weights = np.ones(len(X))/len(X)
+    samples = [X,X]
+    labels = [Y,Y]
     models = []
-    alpha_vals = []
+    alphas = []
 
-    for i in range (1,max_iter):
-        num_samples = len(samples)
+    for iteration in range (0,max_iter):
+        print(f"ITER: {iteration}")
+        num_samples = len(samples[0])
         dt = tree.DecisionTreeClassifier(max_depth=1)
-        dt = dt.fit(samples, labels) # fit with *previous* data
+        dt = dt.fit(samples[0], labels[0]) # fit with *previous* data
         models.append(dt)
-        predictions = dt.predict(samples) # done on *previous* data
-        num_incorrect = 0
+        predictions = dt.predict(samples[0]) # done on *previous* data
+        correct = []
         for i, prediction in enumerate(predictions):
-            num_incorrect += prediction == labels[i]
+            correct.append(prediction == labels[0][i])
+        num_incorrect = num_samples - sum(correct)
         
-        alpha = calc_alpha(num_incorrect, num_samples)
-        w_right, w_wrong = calc_correctness_weights(alpha, num_samples)
-        z = w_wrong*num_incorrect+w_right*(num_samples-num_incorrect)
-        w_right *= 1/z
-        w_wrong *= 1/z
-
-
-
+        epsilon = calc_epsilon(weights, correct)
+        alpha = calc_alpha(epsilon)
+        alphas.append(alpha)
+        
+        weights = update_weights(weights,alpha,correct)
 
     '''
     algo makes a new dataset with a proportional number of samples
@@ -51,20 +51,48 @@ def adaboost_train(X,Y,max_iter):
     alpha: 1D array of alpha values
     return: f, alpha
     '''
-    return models, alpha_vals
+    return models, alphas
 
-def calc_alpha(num_incorrect, size_samples):
-    epsilon = num_incorrect / size_samples
+def calc_epsilon(weights, correct):
+    epsilon = 0
+    for i in range(0,len(correct)-1):
+        epsilon += weights[i] * (correct[i] == False)
+    return epsilon
+
+def calc_alpha(epsilon):
     alpha = 0.5 * math.log((1-epsilon)/epsilon)
     return alpha
 
-def calc_correctness_weights(alpha, size_samples):
-    w_right = 1/size_samples * math.exp(-1*alpha)
-    w_wrong = 1/size_samples * math.exp(alpha)
-    return w_right, w_wrong
+def update_weights(weights, alpha, correct):
+    for i, weight in enumerate(weights):
+            weights[i] = update_weight(weight, alpha, correct[i])
+    weight_sum = weights.sum()
+    weights = weights/weight_sum
+    return weights
 
-def gen_weighted_dataset():
-    pass
+def update_weight(weight, alpha, correctness):
+    if correctness == 1:
+        return weight * math.exp(-alpha)
+    else:
+        return weight * math.exp(alpha)
+
+def gen_weighted_dataset(samples, labels, correct_predicitons, w_right, w_wrong):
+    n_right = int(100 * w_right)
+    n_wrong = int(100 * w_wrong)
+    new_samples = np.empty(samples.shape, int)
+    new_labels = np.empty(labels.shape, int)
+    weights = np.empty(0, float)
+    for i, correct in enumerate(correct_predicitons):
+        if correct == 1:
+            new_samples = np.append(new_samples, [samples[i]]*n_right, axis=0)
+            new_labels = np.append(new_labels, [labels[i]]*n_right, axis=0)
+            weights = np.append(weights, [w_right]*n_right)
+        else:
+            new_samples = np.append(new_samples, [samples[i]]*n_wrong, axis=0)
+            new_labels = np.append(new_labels, [labels[i]]*n_wrong, axis=0)
+            weights = np.append(weights, [w_wrong]*n_wrong)
+    return new_samples, new_labels, weights
+
 
 def adaboost_test(X,Y,f,alpha): # not tested yet
     """Returns accuracy from given adaboost-trained models
@@ -74,11 +102,16 @@ def adaboost_test(X,Y,f,alpha): # not tested yet
     """
 
     num_correct = 0
+    predictions = []
 
-    for i, sample in enumerate(X):
-        adaboost_pred = 0
-        for j, dt in enumerate(f):
-            adaboost_pred += dt.predict(sample) * alpha[j]
-        num_correct += adaboost_pred == Y[i]
+    for dt in f:
+        predictions.append(dt.predict(X))
+
+    # for i, sample in enumerate(X):
+    #     adaboost_pred = 0
+    #     for j, dt in enumerate(f):
+    #         adaboost_pred += dt.predict(sample) * alpha[j]
+    #     num_correct += adaboost_pred == Y[i]
+    print(f"Alpha values: {alpha}")
 
     return num_correct / len(Y)

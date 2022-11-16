@@ -15,7 +15,7 @@ _.predict([[x,y]])
 '''
 
 def adaboost_train(X,Y,max_iter):
-    """Returns list of trained decision tree and alpha values
+    """Returns list of trained decision tree and alpha values using a weight-proportional dataset.
     """
     X = np.array(X)
     Y = np.array(Y)
@@ -40,19 +40,11 @@ def adaboost_train(X,Y,max_iter):
         alphas.append(alpha)
         
         weights[0] = update_weights(weights[0],alpha,correct)
+        # shuffles the k to k-1 samples,labels,weights
         samples[0] = samples[1].copy()
         labels[0] = labels[1].copy()
         weights[0] = weights[1].copy()
         samples[1], labels[1], weights[1] = gen_proportional_data(samples[0].copy(),labels[0].copy(),weights[0].copy())
-
-    '''
-    algo makes a new dataset with a proportional number of samples
-    - make copies of a particular sample to reach necessary weighting
-
-    f: array of trained decision tree stumps
-    alpha: 1D array of alpha values
-    return: f, alpha
-    '''
     return models, alphas
 
 def calc_epsilon(weights, correct):
@@ -83,13 +75,13 @@ def gen_proportional_data(samples, labels, weights):
     new_samples = np.empty([0,samples.shape[1]], int)
     new_labels = np.empty(0, int)
     new_weights = np.empty(0,float)
-    for i in range(0,samples.shape[0]-1):
+    for i in range(0,samples.shape[0]-1): # builds the proportional sample, label, and weights
         new_samples = np.append(new_samples, np.array([samples[i]] * int(scale*weights[i])), axis=0)
         new_labels = np.append(new_labels, np.array([labels[i]] * int(scale*weights[i])))
         new_weights = np.append(new_weights, np.array([weights[i]/int(scale*weights[i])] * int(scale*weights[i])))
     return new_samples.copy(), new_labels.copy(), new_weights.copy()
 
-def adaboost_test(X,Y,f,alpha): # not tested yet
+def adaboost_test(X,Y,f,alpha):
     """Returns accuracy from given adaboost-trained models
     
     Gets a predicted sign from each sample, and compares against the real label

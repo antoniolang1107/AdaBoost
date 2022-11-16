@@ -19,15 +19,14 @@ def adaboost_train(X,Y,max_iter):
     """
     X = np.array(X)
     Y = np.array(Y)
-    weights = np.ones(len(X))/len(X)
+    W = np.ones(len(X))/len(X)
+    weights = [W,W]
     samples = [X,X]
     labels = [Y,Y]
     models = []
     alphas = []
 
     for iteration in range (0,max_iter):
-        print(f"ITER: {iteration}")
-        num_samples = len(samples[0])
         dt = tree.DecisionTreeClassifier(max_depth=1)
         dt = dt.fit(samples[0], labels[0]) # fit with *previous* data
         models.append(dt)
@@ -35,13 +34,16 @@ def adaboost_train(X,Y,max_iter):
         correct = []
         for i, prediction in enumerate(predictions):
             correct.append(prediction == labels[0][i])
-        num_incorrect = num_samples - sum(correct)
         
-        epsilon = calc_epsilon(weights, correct)
+        epsilon = calc_epsilon(weights[0], correct)
         alpha = calc_alpha(epsilon)
         alphas.append(alpha)
         
-        weights = update_weights(weights,alpha,correct)
+        weights[0] = update_weights(weights[0],alpha,correct)
+        samples[0] = samples[1].copy()
+        labels[0] = labels[1].copy()
+        weights[0] = weights[1].copy()
+        samples[1], labels[1], weights[1] = gen_proportional_data(samples[0].copy(),labels[0].copy(),weights[0].copy())
 
     '''
     algo makes a new dataset with a proportional number of samples
@@ -76,23 +78,16 @@ def update_weight(weight, alpha, correctness):
     else:
         return weight * math.exp(alpha)
 
-def gen_weighted_dataset(samples, labels, correct_predicitons, w_right, w_wrong):
-    n_right = int(100 * w_right)
-    n_wrong = int(100 * w_wrong)
-    new_samples = np.empty(samples.shape, int)
-    new_labels = np.empty(labels.shape, int)
-    weights = np.empty(0, float)
-    for i, correct in enumerate(correct_predicitons):
-        if correct == 1:
-            new_samples = np.append(new_samples, [samples[i]]*n_right, axis=0)
-            new_labels = np.append(new_labels, [labels[i]]*n_right, axis=0)
-            weights = np.append(weights, [w_right]*n_right)
-        else:
-            new_samples = np.append(new_samples, [samples[i]]*n_wrong, axis=0)
-            new_labels = np.append(new_labels, [labels[i]]*n_wrong, axis=0)
-            weights = np.append(weights, [w_wrong]*n_wrong)
-    return new_samples, new_labels, weights
-
+def gen_proportional_data(samples, labels, weights):
+    scale = 100
+    new_samples = np.empty([0,samples.shape[1]], int)
+    new_labels = np.empty(0, int)
+    new_weights = np.empty(0,float)
+    for i in range(0,samples.shape[0]-1):
+        new_samples = np.append(new_samples, np.array([samples[i]] * int(scale*weights[i])), axis=0)
+        new_labels = np.append(new_labels, np.array([labels[i]] * int(scale*weights[i])))
+        new_weights = np.append(new_weights, np.array([weights[i]/int(scale*weights[i])] * int(scale*weights[i])))
+    return new_samples.copy(), new_labels.copy(), new_weights.copy()
 
 def adaboost_test(X,Y,f,alpha): # not tested yet
     """Returns accuracy from given adaboost-trained models
@@ -100,18 +95,14 @@ def adaboost_test(X,Y,f,alpha): # not tested yet
     Gets a predicted sign from each sample, and compares against the real label
     Calculates the number of correct out of total samples
     """
-
     num_correct = 0
     predictions = []
-
     for dt in f:
         predictions.append(dt.predict(X))
+    predictions = np.array(predictions)
+    aggr_predictions = np.matmul(predictions.T,alpha)
+    ada_predictions = np.sign(aggr_predictions)
+    num_correct = np.equal(ada_predictions, Y).sum()
 
-    # for i, sample in enumerate(X):
-    #     adaboost_pred = 0
-    #     for j, dt in enumerate(f):
-    #         adaboost_pred += dt.predict(sample) * alpha[j]
-    #     num_correct += adaboost_pred == Y[i]
     print(f"Alpha values: {alpha}")
-
     return num_correct / len(Y)

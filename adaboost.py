@@ -15,70 +15,86 @@ _.predict([[x,y]])
 '''
 
 def adaboost_train(X,Y,max_iter):
-    """Returns list of trained decision tree and alpha values
+    """Returns list of trained decision tree and alpha values using a weight-proportional dataset.
     """
-
-    weights = np.ones(len(X))/len(X) # potentially unnecessary
-    samples = X
-    labels = Y
+    X = np.array(X)
+    Y = np.array(Y)
+    W = np.ones(len(X))/len(X)
+    weights = [W,W]
+    samples = [X,X]
+    labels = [Y,Y]
     models = []
-    alpha_vals = []
+    alphas = []
 
-    for i in range (1,max_iter):
-        num_samples = len(samples)
+    for iteration in range (0,max_iter):
         dt = tree.DecisionTreeClassifier(max_depth=1)
-        dt = dt.fit(samples, labels) # fit with *previous* data
+        dt = dt.fit(samples[0], labels[0]) # fit with *previous* data
         models.append(dt)
-        predictions = dt.predict(samples) # done on *previous* data
-        num_incorrect = 0
+        predictions = dt.predict(samples[0]) # done on *previous* data
+        correct = []
         for i, prediction in enumerate(predictions):
-            num_incorrect += prediction == labels[i]
+            correct.append(prediction == labels[0][i])
         
-        alpha = calc_alpha(num_incorrect, num_samples)
-        w_right, w_wrong = calc_correctness_weights(alpha, num_samples)
-        z = w_wrong*num_incorrect+w_right*(num_samples-num_incorrect)
-        w_right *= 1/z
-        w_wrong *= 1/z
+        epsilon = calc_epsilon(weights[0], correct)
+        alpha = calc_alpha(epsilon)
+        alphas.append(alpha)
+        
+        weights[0] = update_weights(weights[0],alpha,correct)
+        # shuffles the k to k-1 samples,labels,weights
+        samples[0] = samples[1].copy()
+        labels[0] = labels[1].copy()
+        weights[0] = weights[1].copy()
+        samples[1], labels[1], weights[1] = gen_proportional_data(samples[0].copy(),labels[0].copy(),weights[0].copy())
+    return models, alphas
 
+def calc_epsilon(weights, correct):
+    epsilon = 0
+    for i in range(0,len(correct)-1):
+        epsilon += weights[i] * (correct[i] == False)
+    return epsilon
 
-
-
-    '''
-    algo makes a new dataset with a proportional number of samples
-    - make copies of a particular sample to reach necessary weighting
-
-    f: array of trained decision tree stumps
-    alpha: 1D array of alpha values
-    return: f, alpha
-    '''
-    return models, alpha_vals
-
-def calc_alpha(num_incorrect, size_samples):
-    epsilon = num_incorrect / size_samples
+def calc_alpha(epsilon):
     alpha = 0.5 * math.log((1-epsilon)/epsilon)
     return alpha
 
-def calc_correctness_weights(alpha, size_samples):
-    w_right = 1/size_samples * math.exp(-1*alpha)
-    w_wrong = 1/size_samples * math.exp(alpha)
-    return w_right, w_wrong
+def update_weights(weights, alpha, correct):
+    for i, weight in enumerate(weights):
+            weights[i] = update_weight(weight, alpha, correct[i])
+    weight_sum = weights.sum()
+    weights = weights/weight_sum
+    return weights
 
-def gen_weighted_dataset():
-    pass
+def update_weight(weight, alpha, correctness):
+    if correctness == 1:
+        return weight * math.exp(-alpha)
+    else:
+        return weight * math.exp(alpha)
 
-def adaboost_test(X,Y,f,alpha): # not tested yet
+def gen_proportional_data(samples, labels, weights):
+    scale = 100
+    new_samples = np.empty([0,samples.shape[1]], int)
+    new_labels = np.empty(0, int)
+    new_weights = np.empty(0,float)
+    for i in range(0,samples.shape[0]-1): # builds the proportional sample, label, and weights
+        new_samples = np.append(new_samples, np.array([samples[i]] * int(scale*weights[i])), axis=0)
+        new_labels = np.append(new_labels, np.array([labels[i]] * int(scale*weights[i])))
+        new_weights = np.append(new_weights, np.array([weights[i]/int(scale*weights[i])] * int(scale*weights[i])))
+    return new_samples.copy(), new_labels.copy(), new_weights.copy()
+
+def adaboost_test(X,Y,f,alpha):
     """Returns accuracy from given adaboost-trained models
     
     Gets a predicted sign from each sample, and compares against the real label
     Calculates the number of correct out of total samples
     """
-
     num_correct = 0
+    predictions = []
+    for dt in f:
+        predictions.append(dt.predict(X))
+    predictions = np.array(predictions)
+    aggr_predictions = np.dot(predictions.T,alpha)
+    ada_predictions = np.sign(aggr_predictions)
+    num_correct = np.equal(ada_predictions, Y).sum()
 
-    for i, sample in enumerate(X):
-        adaboost_pred = 0
-        for j, dt in enumerate(f):
-            adaboost_pred += dt.predict(sample) * alpha[j]
-        num_correct += adaboost_pred == Y[i]
-
+    print(f"Alpha values: {alpha}")
     return num_correct / len(Y)

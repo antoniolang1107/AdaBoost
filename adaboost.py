@@ -92,7 +92,7 @@ def adaboost_test(X,Y,f,alpha):
     for dt in f:
         predictions.append(dt.predict(X))
     predictions = np.array(predictions)
-    aggr_predictions = np.matmul(predictions.T,alpha)
+    aggr_predictions = np.dot(predictions.T,alpha)
     ada_predictions = np.sign(aggr_predictions)
     num_correct = np.equal(ada_predictions, Y).sum()
 
